@@ -21,9 +21,13 @@ namespace TPDespair.ProcConfig
 
 	public class ZetTweaksPlugin : BaseUnityPlugin
 	{
-		public const string ModVer = "1.0.0";
+		public const string ModVer = "1.1.0";
 		public const string ModName = "ProcConfig";
 		public const string ModGuid = "com.TPDespair.ProcConfig";
+
+
+
+		private static bool lateSetupAttempted = false;
 
 
 
@@ -34,10 +38,14 @@ namespace TPDespair.ProcConfig
 		public static GameObject WillowispPrefab;
 		public static GameObject DiskPrefab;
 		public static GameObject MeatballPrefab;
+		public static GameObject ShurikenPrefab;
+		public static GameObject VoidFlamePrefab;
+		public static GameObject LunarSunPrefab;
 
 
 
 		public static ConfigEntry<bool> EnableModuleCfg { get; set; }
+
 		public static ConfigEntry<float> DaggerProcCfg { get; set; }
 		public static ConfigEntry<float> MissileProcCfg { get; set; }
 		public static ConfigEntry<float> FireworkProcCfg { get; set; }
@@ -46,13 +54,20 @@ namespace TPDespair.ProcConfig
 		public static ConfigEntry<float> DiscBeamProcCfg { get; set; }
 		public static ConfigEntry<float> DiscExplosionProcCfg { get; set; }
 		public static ConfigEntry<float> MeatballProcCfg { get; set; }
+		public static ConfigEntry<float> ShurikenProcCfg { get; set; }
+		public static ConfigEntry<float> VoidFlameProcCfg { get; set; }
+		public static ConfigEntry<float> LunarSunProcCfg { get; set; }
+
 		public static ConfigEntry<float> LightningStrikeProcCfg { get; set; }
 		public static ConfigEntry<float> HookProcCfg { get; set; }
 		public static ConfigEntry<float> UkuleleProcCfg { get; set; }
+		public static ConfigEntry<float> PolyluteProcCfg { get; set; }
 		public static ConfigEntry<float> TeslaProcCfg { get; set; }
 		public static ConfigEntry<float> RazorProcCfg { get; set; }
 		public static ConfigEntry<float> DiscipleProcCfg { get; set; }
 		public static ConfigEntry<float> NkuhanaProcCfg { get; set; }
+		public static ConfigEntry<float> VoidMissileProcCfg { get; set; }
+
 		public static ConfigEntry<float> IcicleProcCfg { get; set; }
 
 
@@ -64,6 +79,7 @@ namespace TPDespair.ProcConfig
 
 			SetupConfig(Config);
 			OnLogBookControllerReady();
+			OnMainMenuEnter();
 		}
 
 
@@ -107,6 +123,18 @@ namespace TPDespair.ProcConfig
 				"1-Proc - Prefabs", "meatballProc", 0.1f,
 				"Procoeff of Molten Perforator. Vanilla is 0.7"
 			);
+			ShurikenProcCfg = Config.Bind(
+				"1-Proc - Prefabs", "shurikenProc", 0.25f,
+				"Procoeff of Shuriken. Vanilla is 1"
+			);
+			VoidFlameProcCfg = Config.Bind(
+				"1-Proc - Prefabs", "voidFlameProc", 0.1f,
+				"Procoeff of Voidsent Flame. Vanilla is 1"
+			);
+			LunarSunProcCfg = Config.Bind(
+				"1-Proc - Prefabs", "lunarSunProc", 1f,
+				"Procoeff of Egocentrism. Vanilla is 1"
+			);
 
 			LightningStrikeProcCfg = Config.Bind(
 				"2-Proc - Orbs", "lightningStrikeProc", 0.25f,
@@ -119,6 +147,10 @@ namespace TPDespair.ProcConfig
 			UkuleleProcCfg = Config.Bind(
 				"2-Proc - Orbs", "ukuleleProc", 0.2f,
 				"Procoeff of Ukulele. Vanilla is 0.2"
+			);
+			PolyluteProcCfg = Config.Bind(
+				"2-Proc - Orbs", "polyluteProc", 0.2f,
+				"Procoeff of Polylute. Vanilla is 0.2"
 			);
 			TeslaProcCfg = Config.Bind(
 				"2-Proc - Orbs", "teslaProc", 0.2f,
@@ -136,6 +168,10 @@ namespace TPDespair.ProcConfig
 				"2-Proc - Orbs", "nkuhanaProc", 0.1f,
 				"Procoeff of N'kuhana's Opinion. Vanilla is 0.2"
 			);
+			VoidMissileProcCfg = Config.Bind(
+				"2-Proc - Orbs", "voidMissileProc", 0.2f,
+				"Procoeff of Plasma Shrimp. Vanilla is 0.2"
+			);
 
 			IcicleProcCfg = Config.Bind(
 				"3-Proc - Other", "icicleProc", 0.1f,
@@ -149,11 +185,47 @@ namespace TPDespair.ProcConfig
 		{
 			On.RoR2.UI.LogBook.LogBookController.Init += (orig) =>
 			{
-				SetProcCoefficients();
+				try
+				{
+					if (!lateSetupAttempted)
+					{
+						lateSetupAttempted = true;
+
+						SetProcCoefficients();
+					}
+				}
+				catch (Exception ex)
+				{
+					Debug.LogError(ex);
+				}
 
 				orig();
 			};
 		}
+
+		private static void OnMainMenuEnter()
+		{
+			On.RoR2.UI.MainMenu.BaseMainMenuScreen.OnEnter += (orig, self, controller) =>
+			{
+				orig(self, controller);
+
+				try
+				{
+					if (!lateSetupAttempted)
+					{
+						lateSetupAttempted = true;
+
+						SetProcCoefficients();
+					}
+				}
+				catch (Exception ex)
+				{
+					Debug.LogError(ex);
+				}
+			};
+		}
+
+
 
 		private static void SetProcCoefficients()
 		{
@@ -166,11 +238,16 @@ namespace TPDespair.ProcConfig
 				SetWillowispDelayedProc();
 				SetDiscProc();
 				SetMeatballProc();
+				SetShurikenProc();
+				SetVoidFlameDelayedProc();
+				SetLunarSunProc();
 
 				SimpleLightningStrikeOrbProc();
 				BounceOrbProc();
 				LightningOrbProc();
 				DevilOrbProc();
+				VoidLightningOrbProc();
+				MissileVoidOrbProc();
 
 				IcicleProc();
 			}
@@ -182,7 +259,7 @@ namespace TPDespair.ProcConfig
 		{
 			try
 			{
-				DaggerPrefab = Resources.Load<GameObject>("prefabs/projectiles/DaggerProjectile");
+				DaggerPrefab = LegacyResourcesAPI.Load<GameObject>("prefabs/projectiles/DaggerProjectile");
 				DaggerPrefab.GetComponent<ProjectileController>().procCoefficient = DaggerProcCfg.Value;
 			}
 			catch (Exception ex)
@@ -196,7 +273,7 @@ namespace TPDespair.ProcConfig
 		{
 			try
 			{
-				MissilePrefab = Resources.Load<GameObject>("prefabs/projectiles/MissileProjectile");
+				MissilePrefab = LegacyResourcesAPI.Load<GameObject>("prefabs/projectiles/MissileProjectile");
 				MissilePrefab.GetComponent<ProjectileController>().procCoefficient = MissileProcCfg.Value;
 			}
 			catch (Exception ex)
@@ -210,7 +287,7 @@ namespace TPDespair.ProcConfig
 		{
 			try
 			{
-				FireworkPrefab = Resources.Load<GameObject>("prefabs/projectiles/FireworkProjectile");
+				FireworkPrefab = LegacyResourcesAPI.Load<GameObject>("prefabs/projectiles/FireworkProjectile");
 				FireworkPrefab.GetComponent<ProjectileController>().procCoefficient = FireworkProcCfg.Value;
 			}
 			catch (Exception ex)
@@ -224,7 +301,7 @@ namespace TPDespair.ProcConfig
 		{
 			try
 			{
-				BleedExplodePrefab = Resources.Load<GameObject>("prefabs/networkedobjects/BleedOnHitAndExplodeDelay");
+				BleedExplodePrefab = LegacyResourcesAPI.Load<GameObject>("prefabs/networkedobjects/BleedOnHitAndExplodeDelay");
 				BleedExplodePrefab.GetComponent<DelayBlast>().procCoefficient = SpleenProcCfg.Value;
 			}
 			catch (Exception ex)
@@ -238,7 +315,7 @@ namespace TPDespair.ProcConfig
 		{
 			try
 			{
-				WillowispPrefab = Resources.Load<GameObject>("prefabs/networkedobjects/WilloWispDelay");
+				WillowispPrefab = LegacyResourcesAPI.Load<GameObject>("prefabs/networkedobjects/WilloWispDelay");
 				WillowispPrefab.GetComponent<DelayBlast>().procCoefficient = WillowProcCfg.Value;
 			}
 			catch (Exception ex)
@@ -252,7 +329,7 @@ namespace TPDespair.ProcConfig
 		{
 			try
 			{
-				DiskPrefab = Resources.Load<GameObject>("prefabs/projectiles/LaserTurbineBomb");
+				DiskPrefab = LegacyResourcesAPI.Load<GameObject>("prefabs/projectiles/LaserTurbineBomb");
 				DiskPrefab.GetComponent<ProjectileController>().procCoefficient = DiscBeamProcCfg.Value;
 				DiskPrefab.GetComponent<ProjectileImpactExplosion>().blastProcCoefficient = DiscExplosionProcCfg.Value;
 
@@ -269,12 +346,57 @@ namespace TPDespair.ProcConfig
 		{
 			try
 			{
-				MeatballPrefab = Resources.Load<GameObject>("Prefabs/Projectiles/FireMeatBall");
+				MeatballPrefab = LegacyResourcesAPI.Load<GameObject>("Prefabs/Projectiles/FireMeatBall");
 				MeatballPrefab.GetComponent<ProjectileImpactExplosion>().blastProcCoefficient = MeatballProcCfg.Value;
 			}
 			catch (Exception ex)
 			{
 				Debug.Log("Failed to set molten perforator proc coefficient.");
+				Debug.LogError(ex);
+			}
+		}
+
+		private static void SetShurikenProc()
+		{
+			try
+			{
+				ShurikenPrefab = LegacyResourcesAPI.Load<GameObject>("Prefabs/Projectiles/ShurikenProjectile");
+				//Debug.Log("Shuriken " + ShurikenPrefab.GetComponent<ProjectileController>().procCoefficient);
+				ShurikenPrefab.GetComponent<ProjectileController>().procCoefficient = ShurikenProcCfg.Value;
+			}
+			catch (Exception ex)
+			{
+				Debug.Log("Failed to set shuriken proc coefficient.");
+				Debug.LogError(ex);
+			}
+		}
+
+		private static void SetVoidFlameDelayedProc()
+		{
+			try
+			{
+				VoidFlamePrefab = LegacyResourcesAPI.Load<GameObject>("Prefabs/NetworkedObjects/ExplodeOnDeathVoidExplosion");
+				//Debug.Log("VoidFlame " + VoidFlamePrefab.GetComponent<DelayBlast>().procCoefficient);
+				VoidFlamePrefab.GetComponent<DelayBlast>().procCoefficient = VoidFlameProcCfg.Value;
+			}
+			catch (Exception ex)
+			{
+				Debug.Log("Failed to set voidsent flame explosion proc coefficient.");
+				Debug.LogError(ex);
+			}
+		}
+
+		private static void SetLunarSunProc()
+		{
+			try
+			{
+				LunarSunPrefab = LegacyResourcesAPI.Load<GameObject>("Prefabs/Projectiles/LunarSunProjectile");
+				//Debug.Log("LunarSun " + LunarSunPrefab.GetComponent<ProjectileController>().procCoefficient);
+				LunarSunPrefab.GetComponent<ProjectileController>().procCoefficient = LunarSunProcCfg.Value;
+			}
+			catch (Exception ex)
+			{
+				Debug.Log("Failed to set Egocentrism proc coefficient.");
 				Debug.LogError(ex);
 			}
 		}
@@ -330,6 +452,32 @@ namespace TPDespair.ProcConfig
 				{
 					if (self.effectType == DevilOrb.EffectType.Skull) self.procCoefficient = NkuhanaProcCfg.Value;
 					else if (self.effectType == DevilOrb.EffectType.Wisp) self.procCoefficient = DiscipleProcCfg.Value;
+				}
+
+				orig(self);
+			};
+		}
+
+		private static void VoidLightningOrbProc()
+		{
+			On.RoR2.Orbs.VoidLightningOrb.Begin += (orig, self) =>
+			{
+				if (self.procCoefficient > 0f)
+				{
+					self.procCoefficient = PolyluteProcCfg.Value;
+				}
+
+				orig(self);
+			};
+		}
+
+		private static void MissileVoidOrbProc()
+		{
+			On.RoR2.Orbs.MissileVoidOrb.Begin += (orig, self) =>
+			{
+				if (self.procCoefficient > 0f)
+				{
+					self.procCoefficient = VoidMissileProcCfg.Value;
 				}
 
 				orig(self);
