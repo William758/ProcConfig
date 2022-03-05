@@ -14,4 +14,6 @@ Use r2modman or place inside of Risk of Rain 2/Bepinex/Plugins/
 
 ## Changelog:
 
+v1.1.0 - Updated for latest game version. Added configs for new items.
+
 v1.0.0 - Initial Release. Removed from ZetTweaks.
