@@ -1,8 +1,10 @@
-using System;
+﻿using System;
 using System.Linq;
 using UnityEngine;
 using BepInEx;
 using BepInEx.Configuration;
+using Mono.Cecil.Cil;
+using MonoMod.Cil;
 using RoR2;
 using RoR2.Orbs;
 using RoR2.Projectile;
@@ -19,9 +21,9 @@ namespace TPDespair.ProcConfig
 {
 	[BepInPlugin(ModGuid, ModName, ModVer)]
 
-	public class ZetTweaksPlugin : BaseUnityPlugin
+	public class ProcConfigPlugin : BaseUnityPlugin
 	{
-		public const string ModVer = "1.1.0";
+		public const string ModVer = "1.2.0";
 		public const string ModName = "ProcConfig";
 		public const string ModGuid = "com.TPDespair.ProcConfig";
 
@@ -44,9 +46,10 @@ namespace TPDespair.ProcConfig
 
 
 
-		public static ConfigEntry<bool> EnableModuleCfg { get; set; }
+		public static ConfigEntry<bool> EnableProcModuleCfg { get; set; }
 
 		public static ConfigEntry<float> DaggerProcCfg { get; set; }
+		public static ConfigEntry<float> DaggerDurationCfg { get; set; }
 		public static ConfigEntry<float> MissileProcCfg { get; set; }
 		public static ConfigEntry<float> FireworkProcCfg { get; set; }
 		public static ConfigEntry<float> SpleenProcCfg { get; set; }
@@ -69,6 +72,11 @@ namespace TPDespair.ProcConfig
 		public static ConfigEntry<float> VoidMissileProcCfg { get; set; }
 
 		public static ConfigEntry<float> IcicleProcCfg { get; set; }
+		public static ConfigEntry<float> GasolineProcCfg { get; set; }
+
+		public static ConfigEntry<bool> EnableOnKillLimiterCfg { get; set; }
+		public static ConfigEntry<float> OnKillLimiterDistanceCfg { get; set; }
+		public static ConfigEntry<float> OnKillLimiterDurationCfg { get; set; }
 
 
 
@@ -78,15 +86,27 @@ namespace TPDespair.ProcConfig
 			NetworkModCompatibilityHelper.networkModList = NetworkModCompatibilityHelper.networkModList.Append(ModGuid + ":" + ModVer);
 
 			SetupConfig(Config);
+
 			OnLogBookControllerReady();
 			OnMainMenuEnter();
+
+			if (EnableOnKillLimiterCfg.Value)
+			{
+				OnKillLimiter.Init();
+			}
 		}
+		/*
+		public void Update()
+		{
+			DebugDrops();
+		}
+		//*/
 
 
 
 		private static void SetupConfig(ConfigFile Config)
 		{
-			EnableModuleCfg = Config.Bind(
+			EnableProcModuleCfg = Config.Bind(
 				"0-Proc - Enable", "enableProcModule", true,
 				"Enable Proc Module."
 			);
@@ -94,6 +114,10 @@ namespace TPDespair.ProcConfig
 			DaggerProcCfg = Config.Bind(
 				"1-Proc - Prefabs", "daggerProc", 0f,
 				"Procoeff of Ceremonial Dagger. Vanilla is 1"
+			);
+			DaggerDurationCfg = Config.Bind(
+				"1-Proc - Prefabs", "daggerDuration", 10f,
+				"Duration that Ceremonial Daggers linger before expiring. Vanilla is 30"
 			);
 			MissileProcCfg = Config.Bind(
 				"1-Proc - Prefabs", "missileProc", 0.25f,
@@ -177,6 +201,23 @@ namespace TPDespair.ProcConfig
 				"3-Proc - Other", "icicleProc", 0.1f,
 				"Procoeff of Frost Relic. Vanilla is 0.2"
 			);
+			GasolineProcCfg = Config.Bind(
+				"3-Proc - Other", "gasolineProc", 0f,
+				"Procoeff of Gasoline. Vanilla is 0"
+			);
+
+			EnableOnKillLimiterCfg = Config.Bind(
+				"4-Proc - OnKillLimiter", "enableOnKillLimiter", true,
+				"On kill effects will create a restricted area in which further on kill effects cannot proc until it expires. Restricted items : Gasoline, Will-o'-the-wisp, Ceremonial Dagger, and Shatterspleen."
+			);
+			OnKillLimiterDistanceCfg = Config.Bind(
+				"4-Proc - OnKillLimiter", "onKillLimiterDistance", 15f,
+				"Distance restriction to prevent further on kill procs from player."
+			);
+			OnKillLimiterDurationCfg = Config.Bind(
+				"4-Proc - OnKillLimiter", "onKillLimiterDuration", 0.025f,
+				"Duration restriction to prevent further on kill procs from player."
+			);
 		}
 
 
@@ -192,6 +233,7 @@ namespace TPDespair.ProcConfig
 						lateSetupAttempted = true;
 
 						SetProcCoefficients();
+						GatherIndexes();
 					}
 				}
 				catch (Exception ex)
@@ -216,6 +258,7 @@ namespace TPDespair.ProcConfig
 						lateSetupAttempted = true;
 
 						SetProcCoefficients();
+						GatherIndexes();
 					}
 				}
 				catch (Exception ex)
@@ -229,9 +272,9 @@ namespace TPDespair.ProcConfig
 
 		private static void SetProcCoefficients()
 		{
-			if (EnableModuleCfg.Value)
+			if (EnableProcModuleCfg.Value)
 			{
-				SetDaggerProc();
+				SetDaggerValues();
 				SetMissileProc();
 				SetFireworkProc();
 				SetSpleenDelayedProc();
@@ -250,21 +293,56 @@ namespace TPDespair.ProcConfig
 				MissileVoidOrbProc();
 
 				IcicleProc();
+				GasolineProc();
+			}
+		}
+
+		private static void GatherIndexes()
+		{
+			if (EnableOnKillLimiterCfg.Value)
+			{
+				if (!DaggerPrefab)
+				{
+					DaggerPrefab = LegacyResourcesAPI.Load<GameObject>("prefabs/projectiles/DaggerProjectile");
+				}
+
+				OnKillLimiter.DaggerProjectileIndex = ProjectileCatalog.GetProjectileIndex(DaggerPrefab);
+				Debug.LogWarning("Dagger ProjectileIndex : " + OnKillLimiter.DaggerProjectileIndex);
+
+				if (!WillowispPrefab)
+				{
+					WillowispPrefab = LegacyResourcesAPI.Load<GameObject>("prefabs/networkedobjects/WilloWispDelay");
+				}
+
+				DelayBlast wispBlast = WillowispPrefab.GetComponent<DelayBlast>();
+				OnKillLimiter.WilloWispEffectIndex = EffectCatalog.FindEffectIndexFromPrefab(wispBlast.explosionEffect);
+				Debug.LogWarning("WilloWisp EffectIndex : " + OnKillLimiter.WilloWispEffectIndex);
+
+				if (!BleedExplodePrefab)
+				{
+					BleedExplodePrefab = LegacyResourcesAPI.Load<GameObject>("prefabs/networkedobjects/BleedOnHitAndExplodeDelay");
+				}
+
+				DelayBlast bleedBlast = BleedExplodePrefab.GetComponent<DelayBlast>();
+				OnKillLimiter.ShatterSpleenEffectIndex = EffectCatalog.FindEffectIndexFromPrefab(bleedBlast.explosionEffect);
+				Debug.LogWarning("ShatterSpleen EffectIndex : " + OnKillLimiter.ShatterSpleenEffectIndex);
 			}
 		}
 
 
 
-		private static void SetDaggerProc()
+		private static void SetDaggerValues()
 		{
 			try
 			{
 				DaggerPrefab = LegacyResourcesAPI.Load<GameObject>("prefabs/projectiles/DaggerProjectile");
 				DaggerPrefab.GetComponent<ProjectileController>().procCoefficient = DaggerProcCfg.Value;
+				//Debug.LogWarning("Dagger lifetime : " + DaggerPrefab.GetComponent<ProjectileSimple>().lifetime);
+				DaggerPrefab.GetComponent<ProjectileSimple>().lifetime = DaggerDurationCfg.Value;
 			}
 			catch (Exception ex)
 			{
-				Debug.Log("Failed to set dagger proc coefficient.");
+				Debug.Log("Failed to set dagger proc values.");
 				Debug.LogError(ex);
 			}
 		}
@@ -495,5 +573,82 @@ namespace TPDespair.ProcConfig
 				self.icicleProcCoefficientPerTick = IcicleProcCfg.Value;
 			};
 		}
+
+		private static void GasolineProc()
+		{
+			IL.RoR2.GlobalEventManager.ProcIgniteOnKill += (il) =>
+			{
+				ILCursor c = new ILCursor(il);
+
+				bool found = c.TryGotoNext(
+					x => x.MatchLdcR4(0f),
+					x => x.MatchStfld<BlastAttack>("procCoefficient")
+				);
+
+				if (found)
+				{
+					c.Index += 1;
+
+					c.Emit(OpCodes.Pop);
+					c.EmitDelegate<Func<float>>(() =>
+					{
+						return GasolineProcCfg.Value;
+					});
+				}
+				else
+				{
+					Debug.LogWarning("GasolineProcHook Failed");
+				}
+			};
+		}
+
+
+
+		/*
+		private static void DebugDrops()
+		{
+			if (Input.GetKeyDown(KeyCode.F2))
+			{
+				var transform = PlayerCharacterMasterController.instances[0].master.GetBodyObject().transform;
+
+				CreateDroplet(RoR2Content.Items.ShieldOnly, transform.position + new Vector3(0f, 0f, 0f));
+				CreateDroplet(RoR2Content.Equipment.BurnNearby, transform.position + new Vector3(0f, 0f, 0f));
+
+
+
+				CreateDroplet(RoR2Content.Items.IgniteOnKill, transform.position + new Vector3(-5f, 5f, 5f));
+				CreateDroplet(RoR2Content.Items.CritGlasses, transform.position + new Vector3(-10f, 10f, 10f));
+
+				CreateDroplet(DLC1Content.Items.MushroomVoid, transform.position + new Vector3(0f, 5f, 7.5f));
+				CreateDroplet(DLC1Content.Items.MissileVoid, transform.position + new Vector3(0f, 10f, 15f));
+
+				CreateDroplet(RoR2Content.Items.ExplodeOnDeath, transform.position + new Vector3(5f, 5f, 5f));
+				CreateDroplet(RoR2Content.Items.SprintArmor, transform.position + new Vector3(10f, 10f, 10f));
+
+				CreateDroplet(RoR2Content.Items.Dagger, transform.position + new Vector3(-5f, 5f, -5f));
+				CreateDroplet(RoR2Content.Items.BarrierOnOverHeal, transform.position + new Vector3(-10f, 10f, -10f));
+
+				CreateDroplet(RoR2Content.Items.BleedOnHitAndExplode, transform.position + new Vector3(0f, 5f, -7.5f));
+				CreateDroplet(RoR2Content.Items.Knurl, transform.position + new Vector3(0f, 10f, -15f));
+
+				CreateDroplet(RoR2Content.Items.Pearl, transform.position + new Vector3(5f, 5f, -5f));
+				CreateDroplet(RoR2Content.Items.ShinyPearl, transform.position + new Vector3(10f, 10f, -10f));
+			}
+		}
+
+		private static void CreateDroplet(EquipmentDef def, Vector3 pos)
+		{
+			if (!def) return;
+
+			PickupDropletController.CreatePickupDroplet(PickupCatalog.FindPickupIndex(def.equipmentIndex), pos, Vector3.zero);
+		}
+
+		private static void CreateDroplet(ItemDef def, Vector3 pos)
+		{
+			if (!def) return;
+
+			PickupDropletController.CreatePickupDroplet(PickupCatalog.FindPickupIndex(def.itemIndex), pos, Vector3.zero);
+		}
+		//*/
 	}
 }
